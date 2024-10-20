@@ -5,10 +5,12 @@
 #include <chrono>
 #include <atomic>   // For atomic boolean
 #include <csignal>  // For signal handling
+#include <fstream> // For input file stream
 
-#define desiredTemp 40      // Desired temperature to start the fan (Celsius)
-#define criticalTemp 80     // Critical temperature for full-speed fan or shutdown (Celsius)
-#define minFanSpeed 30      // Minimum fan speed in percentage
+// Default configuration values
+float desiredTemp = 40;     // Desired temperature to start the fan (Celsius)
+float criticalTemp = 80;    // Critical temperature for full-speed fan or shutdown (Celsius)
+int minFanSpeed = 30;       // Minimum fan speed in percentage
 
 constexpr int fanPin = 24;
 // Atomic flag to control the loop
@@ -30,8 +32,8 @@ void fanOFF() {
 
 // Signal handler to catch Ctrl-C and clean up
 void signalHandler(int signum) {
-    std::cerr << "Interrupt signal (" << signum << ") received." << std::endl;
-    keepRunning = false; // Set flag to false to exit loop
+	std::cerr << "Interrupt signal (" << signum << ") received." << std::endl;
+	keepRunning = false; // Set flag to false to exit loop
 }
 
 // Function to retrieve the CPU temperature
@@ -100,7 +102,50 @@ void handleCriticalTemp(float actualTemp) {
 	}
 }
 
+// Function to load configuration from a file
+void loadConfig() {
+	const char* configPaths[] = { "./cpu_fan_control.conf", "/etc/cpu_fan_control.conf" };  // Array of paths to try
+	bool configLoaded = false;
+
+	for (const char* path : configPaths) {
+		std::ifstream configFile(path);
+		if (configFile) {
+			std::cerr << "Loading configuration from " << path << std::endl;
+			std::string line;
+			while (std::getline(configFile, line)) {
+				size_t delimiterPos = line.find('=');
+				if (delimiterPos == std::string::npos) {
+					continue;  // Skip invalid lines
+				}
+
+				std::string key = line.substr(0, delimiterPos);
+				std::string value = line.substr(delimiterPos + 1);
+
+				if (key == "desiredTemp") {
+					desiredTemp = atof(value.c_str());
+				} else if (key == "criticalTemp") {
+					criticalTemp = atof(value.c_str());
+				} else if (key == "minFanSpeed") {
+					minFanSpeed = atoi(value.c_str());
+				}
+			}
+
+			configFile.close();
+			configLoaded = true;
+			break;  // Stop once a valid config file is found
+		}
+	}
+
+	if (!configLoaded) {
+		std::cerr << "No config file found, using default values." << std::endl;
+	}
+}
+
 int main(int argc, char const *argv[]) {
+
+	// Load configuration from file or use defaults
+	loadConfig();
+
 	// WiringPi Setup
 	if (gpioInitialise() < 0) {
 		cerr << "WiringPi setup failed!" << endl;
@@ -108,7 +153,7 @@ int main(int argc, char const *argv[]) {
 	}
 
 	// Register signal and signal handler
-    std::signal(SIGINT, signalHandler);  // Catch Ctrl-C (SIGINT) /!\ NEED TO BE CALLED AFTER gpioInitialise()!
+	std::signal(SIGINT, signalHandler);  // Catch Ctrl-C (SIGINT) /!\ NEED TO BE CALLED AFTER gpioInitialise()!
 
 	// Set GPIO pin mode for the fan
 	gpioSetMode(fanPin, PI_OUTPUT);
@@ -131,9 +176,9 @@ int main(int argc, char const *argv[]) {
 	}
 
 	// Clean up and turn off the fan
-    fanOFF();  // Turn fan off
-    std::cout << "Fan turned off." << std::endl;
+	fanOFF();  // Turn fan off
+	std::cout << "Fan turned off." << std::endl;
 
-    gpioTerminate();  // Clean up the pigpio library
-    return 0;
+	gpioTerminate();  // Clean up the pigpio library
+	return 0;
 }

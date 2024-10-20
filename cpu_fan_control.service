@@ -1,0 +1,11 @@
+[Unit]
+Description=CPU Fan Control Service
+After=multi-user.target
+
+[Service]
+ExecStart=/usr/local/bin/cpu_fan_control
+Restart=always
+User=root
+
+[Install]
+WantedBy=multi-user.target
